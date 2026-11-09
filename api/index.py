@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -23,6 +24,29 @@ from src.simulation import simulate_step, simulation_bounds  # noqa: E402
 app = Flask(__name__, static_folder=None)
 app.url_map.strict_slashes = False
 app.json.sort_keys = False
+
+
+class RestoreOriginalPath:
+    """
+    Vercel hands rewritten requests to the function under the destination path
+    (/api/index). vercel.json therefore passes the real path as ``?__path=api/...``;
+    this middleware puts it back so the normal Flask routes match, and drops the helper
+    parameter from the query string. Requests without ``__path`` are untouched.
+    """
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        qs = parse_qs(environ.get("QUERY_STRING", ""), keep_blank_values=True)
+        real = qs.pop("__path", [None])[0]
+        if real:
+            environ["PATH_INFO"] = "/" + real.strip("/")
+            environ["QUERY_STRING"] = urlencode(qs, doseq=True)
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = RestoreOriginalPath(app.wsgi_app)
 
 
 # ----------------------------------------------------------------------------- helpers
