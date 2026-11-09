@@ -1,6 +1,0 @@
-# Runtime dependencies (installed by Vercel for the Python API)
-flask>=3.0,<4
-numpy>=1.26,<3
-pandas>=2.0,<4
-scikit-learn>=1.3,<2
-statsmodels>=0.14,<1
