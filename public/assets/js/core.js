@@ -271,7 +271,7 @@ export async function mount(opts) {
     throw e;
   }
   api("/api/ai/status").then((s) => {
-    $("#ai-state").innerHTML = `<span class="status-dot ${s.configured ? "" : "off"}"></span>${s.configured ? `AI analyst: ${esc(s.model)}` : "AI analyst: add GEMINI_API_KEY"}`;
+    $("#ai-state").innerHTML = `<span class="status-dot ${s.configured ? "" : "off"}"></span>${s.configured ? `AI analyst: ${esc(s.provider)}` : "AI analyst: add an API key"}`;
   }).catch(() => {});
 
   if (series) wireSelectors();
