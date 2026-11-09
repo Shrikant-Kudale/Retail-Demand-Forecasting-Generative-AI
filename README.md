@@ -22,7 +22,7 @@
 [**Models**](#-the-eight-models) ·
 [**API**](#-api-reference) ·
 [**Deploy**](#-deploy-to-vercel) ·
-[**AI analyst**](#-ai-analyst-google-gemini) ·
+[**AI analyst**](#-ai-analyst-xai-grok-or-google-gemini) ·
 [**Structure**](#-project-structure)
 
 </div>
@@ -42,7 +42,7 @@
 9. [Live simulation](#-live-simulation)
 10. [API reference](#-api-reference)
 11. [Deploy to Vercel](#-deploy-to-vercel)
-12. [AI analyst (Google Gemini)](#-ai-analyst-google-gemini)
+12. [AI analyst (xAI Grok or Google Gemini)](#-ai-analyst-xai-grok-or-google-gemini)
 13. [Testing](#-testing)
 14. [Project structure](#-project-structure)
 15. [Technology stack](#-technology-stack)
@@ -61,7 +61,7 @@
 | 📦 **Inventory planning** | Safety stock, reorder point, order-up-to level and order size for a periodic-review (R, S) policy — in dollars or units. |
 | ▶️ **Live weekly simulation** | Replays history week by week: **retrain → forecast → order → reveal demand → score**, against a naive baseline. |
 | 🔍 **Sales analysis** | Seasonality profile, holiday surges, promotional markdowns, external-driver correlations. |
-| 🤖 **Optional AI analyst** | Plug in a Google AI Studio key for grounded executive briefings and Q&A. Works without a key too. |
+| 🤖 **Optional AI analyst** | Plug in an xAI Grok or Google AI Studio key for grounded executive briefings and Q&A. Works without a key too. |
 | 🌗 **Polished UI** | Seven pages, light/dark themes, responsive down to phone width, no build step. |
 
 ---
@@ -108,7 +108,7 @@ flowchart LR
     end
 
     DATA[("📂 data/*.csv<br/>train · features · stores · test")]
-    GEM{{"✨ Google Gemini API<br/>(optional)"}}
+    GEM{{"✨ xAI Grok / Google Gemini API<br/>(optional)"}}
 
     Browser -- "HTML / JS / CSS" --> CDN
     Browser -- "fetch /api/*  (JSON)" --> FN
@@ -279,7 +279,7 @@ All endpoints are JSON; query parameters `store`, `dept` (default 1) and `metric
 | GET | `/api/simulate/bounds` | Valid replay window |
 | POST | `/api/simulate/step` | One retrain-forecast-replenish step |
 | GET | `/api/ai/status` | Whether an AI key is configured |
-| POST | `/api/ai/briefing` | Rule-based notes (+ Gemini briefing if keyed) |
+| POST | `/api/ai/briefing` | Rule-based notes (+ AI briefing if keyed) |
 | POST | `/api/ai/ask` | Free-form grounded question (needs key) |
 
 ---
@@ -288,7 +288,7 @@ All endpoints are JSON; query parameters `store`, `dept` (default 1) and `metric
 
 1. **Push** this folder to a GitHub repository (replace the old contents).
 2. In Vercel choose **Add New → Project**, import the repository and keep the defaults — `vercel.json` already sets the output directory, clean URLs, the API rewrite and a 60-second function limit.
-3. *(Optional)* add environment variables under **Settings → Environment Variables** (see [AI analyst](#-ai-analyst-google-gemini)).
+3. *(Optional)* add environment variables under **Settings → Environment Variables** (see [AI analyst](#-ai-analyst-xai-grok-or-google-gemini)).
 4. **Deploy.** Static pages are served from the CDN; `/api/*` runs the Python function.
 
 ```mermaid
@@ -304,18 +304,17 @@ Cold start loads the 421 k-row dataset (~1 s); warm requests are cached in memor
 
 ---
 
-## ✨ AI analyst (Google Gemini)
+## ✨ AI analyst (xAI Grok or Google Gemini)
 
-The app works fully without AI. To enable generative briefings and Q&A:
+The app works fully without AI. To enable generative briefings and Q&A, add **one** API key as a server environment variable (Vercel → Settings → Environment Variables, or a local `.env`) and **redeploy**:
 
-1. Create a key in [Google AI Studio](https://aistudio.google.com/apikey).
-2. Add it as an environment variable (Vercel → Settings → Environment Variables, or a local `.env`):
-
-| Variable | Required | Default | Purpose |
-|---|:-:|---|---|
-| `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | ✅ | — | Gemini API key |
-| `GEMINI_MODEL` | ❌ | `gemini-2.5-flash` | Any Gemini model available to your key |
-| `AI_RATE_LIMIT` | ❌ | `30` | Requests per client per 10 minutes |
+| Variable | Required | Purpose |
+|---|:-:|---|
+| `XAI_API_KEY` (or `GROK_API_KEY`) | one key needed | xAI Grok key (starts with `xai-`) |
+| `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | one key needed | Google AI Studio key (starts with `AIza`) |
+| `AI_PROVIDER` | ❌ | Force `xai` or `gemini` (otherwise detected from the key) |
+| `AI_MODEL` | ❌ | Model id. If unset, the app asks the provider which models your key can use and picks a fast one |
+| `AI_RATE_LIMIT` | ❌ | Requests per client per 10 minutes (default `30`) |
 
 Design notes: the key stays **server-side** (never sent to the browser); prompts are **grounded** on numbers produced by the engine; user questions are length-limited and treated as plain text. The code lives in [`src/ai.py`](src/ai.py).
 
@@ -328,7 +327,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q          # 32 tests: engine, leakage checks, API, simulation, AI fallback
 ```
 
-Covers data loading and joins, non-leaking features, metric edge cases, chronological splits, all eight models, recursive forecasting, inventory maths, API contracts, stateless simulation steps and the mocked Gemini call.
+Covers data loading and joins, non-leaking features, metric edge cases, chronological splits, all eight models, recursive forecasting, inventory maths, API contracts, stateless simulation steps and the mocked Grok and Gemini calls.
 
 ---
 
@@ -356,7 +355,7 @@ retail-demand-forecasting/
 │   ├── inventory.py             # (R, S) policy maths
 │   ├── service.py               # JSON service layer + caching
 │   ├── simulation.py            # live weekly replay
-│   ├── ai.py                    # optional Gemini integration
+│   ├── ai.py                    # optional Grok / Gemini integration
 │   └── visualization.py         # Matplotlib/Plotly helpers for notebooks
 ├── data/                        # train · features · stores · test (CSV)
 ├── notebooks/                   # analysis notebooks
