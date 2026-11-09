@@ -109,3 +109,10 @@ def test_ai_with_key_calls_gemini(client, monkeypatch):
     assert r["answer"].startswith("Stock up") and seen["key"] == "test-key"
     assert "FACTS" in seen["body"]["contents"][0]["parts"][0]["text"]
     assert "test-key" not in json.dumps(r)
+
+
+def test_vercel_style_rewritten_path(client):
+    """Vercel calls /api/index?__path=api/<route>; the real route and query must be restored."""
+    r = client.get("/api/index?__path=api/series&store=2&dept=3")
+    assert r.status_code == 200 and r.json["store"] == 2 and r.json["dept"] == 3
+    assert client.get("/api/index?__path=api/health").json["status"] == "ok"
