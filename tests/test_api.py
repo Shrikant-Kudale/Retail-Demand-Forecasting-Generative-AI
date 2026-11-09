@@ -83,32 +83,73 @@ def test_validation_errors(client):
     assert client.get("/api/evaluate?store=1&dept=1&metric=bogus").status_code == 400
 
 
+_AI_VARS = ["XAI_API_KEY", "GROK_API_KEY", "AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "AI_PROVIDER", "AI_MODEL", "XAI_MODEL", "GEMINI_MODEL"]
+
+
+def _clean_ai_env(monkeypatch):
+    for v in _AI_VARS:
+        monkeypatch.delenv(v, raising=False)
+    ai._discover_model.cache_clear()
+
+
+class _Resp:
+    def __init__(self, payload): self.payload = payload
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return json.dumps(self.payload).encode()
+
+
 def test_ai_without_key_falls_back(client, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    _clean_ai_env(monkeypatch)
     r = client.post("/api/ai/briefing", json={"store": 1, "dept": 1}).json
     assert r["source"] == "rules" and len(r["rule_based"]) == 5
     assert client.post("/api/ai/ask", json={"question": "hi"}).status_code == 503
 
 
-def test_ai_with_key_calls_gemini(client, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    seen = {}
+def test_provider_detected_from_key(monkeypatch):
+    _clean_ai_env(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "xai-abc123")          # a Grok key pasted under the wrong name
+    assert ai.provider() == "xai"
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyExample")
+    assert ai.provider() == "gemini"
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("GROK_API_KEY", "whatever")
+    assert ai.provider() == "xai"
 
-    class Resp:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self): return json.dumps({"candidates": [{"content": {"parts": [{"text": "Stock up before week 51."}]}}]}).encode()
+
+def test_grok_answer_with_model_discovery(client, monkeypatch):
+    _clean_ai_env(monkeypatch)
+    monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+    calls = []
 
     def fake_urlopen(req, timeout=0):
-        seen["key"] = req.headers.get("X-goog-api-key"); seen["body"] = json.loads(req.data)
-        return Resp()
+        calls.append((req.full_url, req.headers.get("Authorization")))
+        if req.full_url.endswith("/models"):
+            return _Resp({"data": [{"id": "grok-4"}, {"id": "grok-imagine-image"}, {"id": "grok-4-fast-non-reasoning"}]})
+        body = json.loads(req.data)
+        assert body["model"] == "grok-4-fast-non-reasoning" and "FACTS" in body["messages"][1]["content"]
+        return _Resp({"choices": [{"message": {"content": "Stock up before week 51."}}]})
 
     monkeypatch.setattr(ai.urllib.request, "urlopen", fake_urlopen)
     r = client.post("/api/ai/ask", json={"store": 1, "dept": 1, "question": "When should I stock up?"}).json
-    assert r["answer"].startswith("Stock up") and seen["key"] == "test-key"
-    assert "FACTS" in seen["body"]["contents"][0]["parts"][0]["text"]
-    assert "test-key" not in json.dumps(r)
+    assert r["answer"].startswith("Stock up") and r["source"] == "xai"
+    assert all(a == "Bearer xai-test-key" for _, a in calls) and "xai-test-key" not in json.dumps(r)
+    assert client.get("/api/ai/status").json["provider"] == "xAI Grok"
+
+
+def test_gemini_answer_with_explicit_model(client, monkeypatch):
+    _clean_ai_env(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-test")
+    monkeypatch.setenv("AI_MODEL", "gemini-test-model")
+    seen = {}
+
+    def fake_urlopen(req, timeout=0):
+        seen["url"] = req.full_url; seen["key"] = req.headers.get("X-goog-api-key")
+        return _Resp({"candidates": [{"content": {"parts": [{"text": "Hold extra stock in week 51."}]}}]})
+
+    monkeypatch.setattr(ai.urllib.request, "urlopen", fake_urlopen)
+    r = client.post("/api/ai/ask", json={"store": 1, "dept": 1, "question": "What next?"}).json
+    assert r["answer"].startswith("Hold") and "gemini-test-model:generateContent" in seen["url"] and seen["key"] == "AIza-test"
 
 
 def test_vercel_style_rewritten_path(client):
